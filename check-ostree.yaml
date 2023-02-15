@@ -9,6 +9,7 @@
     failed_counter: "0"
     firewall_feature: "false"
     ignition: "false"
+    ostree_upgrade: "false"
 
   tasks:
     # current target host's IP address
@@ -44,6 +45,10 @@
       ignore_errors: yes
       become: yes
 
+    - name: check rpm ostree status
+      command: rpm-ostree status
+      ignore_errors: yes
+
     # case: check rt kernel installed after upgrade
     - name: check installed kernel
       command: uname -r
@@ -64,14 +69,6 @@
           set_fact:
             failed_counter: "{{ failed_counter | int + 1 }}"
       when: "'rt' in result_kernel.stdout"
-
-    # first installed or upgraded
-    - name: determin which stage the checking is running on
-      shell: rpm-ostree status --json | jq '.deployments | length'
-      register: result_stage
-
-    - set_fact:
-        checking_stage: "{{ result_stage.stdout }}"
 
     # case: check fdo onboarding status
     # after fdo onboarding finished, /boot/device-credentials will be moved to /etc/device-credentials
@@ -445,7 +442,7 @@
         - name: failed count + 1
           set_fact:
             failed_counter: "{{ failed_counter | int + 1 }}"
-      when: checking_stage == "2"
+      when: ostree_upgrade == "true"
 
     # case: check ostree-remount mount log
     - name: check ostree-remount mount log
@@ -999,6 +996,49 @@
           set_fact:
             failed_counter: "{{ failed_counter | int + 1 }}"
       when: firewall_feature == "true"
+
+    - name: remove package telnet from the current layer
+      block:
+        - name: remove package telnet from the current layer
+          command: rpm-ostree override remove telnet
+          become: yes
+          register: remove_result
+          retries: 30  # due to https://github.com/osbuild/osbuild-composer/issues/2492
+          delay: 2
+          until: remove_result is success
+
+        - name: reboot to deploy new ostree commit
+          reboot:
+          become: yes
+
+        - name: wait for connection to become reachable/usable
+          wait_for_connection:
+            delay: 30
+
+        - name: waits until instance is reachable
+          wait_for:
+            host: "{{ ansible_all_ipv4_addresses[0] }}"
+            port: 22
+            search_regex: OpenSSH
+            delay: 10
+          register: result_telnet
+          until: result_telnet is success
+          retries: 6
+          delay: 10
+
+        - assert:
+            that:
+              - result_telnet is succeeded
+            fail_msg: "Install package failed"
+            success_msg: "Install package success"
+      always:
+        - set_fact:
+            total_counter: "{{ total_counter | int + 1 }}"
+      rescue:
+        - name: failed count + 1
+          set_fact:
+            failed_counter: "{{ failed_counter | int + 1 }}"
+      when: ostree_upgrade == "false"
 
     - assert:
         that:

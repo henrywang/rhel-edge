@@ -13,6 +13,31 @@ fi
 source /etc/os-release
 ARCH=$(uname -m)
 
+
+SOURCE_URL=""
+# RHEL for Edge package test
+if [ -e packages/package_ci_trigger ]; then
+    source packages/package_ci_trigger
+
+    # Get package rpm download URL
+    IFS=',' read -r -a package_rpms <<< "$PACKAGE_RPM_LIST"
+
+    SOURCE_FOLDER="/var/www/html/${TEST_OS}-packages"
+    # Download package rpms to /var/www/html/packages
+    sudo mkdir -p "$SOURCE_FOLDER"
+    for i in "${package_rpms[@]}"; do
+        if [[ ${i} != *"debug"* && ${i} != *"devel"* ]]; then
+            sudo wget -q "http://${DOWNLOAD_NODE}/brewroot/work/${i}" -P "$SOURCE_FOLDER"
+        fi
+    done
+
+    # Make all packages as a repo
+    sudo dnf install -y createrepo_c
+    sudo createrepo_c "$SOURCE_FOLDER"
+
+    SOURCE_URL="http://192.168.100.1/${TEST_OS}-packages"
+fi
+
 # SSH setup.
 SSH_USER="admin"
 SSH_OPTIONS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5)
@@ -76,6 +101,8 @@ clean_up () {
     sudo podman rmi -f -a
     # Remomve tmp dir.
     sudo rm -rf "$TEMPDIR"
+    # Remove source package folder
+    sudo rm -rf "/var/www/html/${TEST_OS}-packages"
 }
 
 # Variables before case
@@ -318,6 +345,10 @@ name = "python3"
 version = "*"
 
 [[packages]]
+name = "telnet"
+version = "*"
+
+[[packages]]
 name = "sssd"
 version = "*"
 EOF
@@ -347,7 +378,7 @@ ansible_ssh_common_args="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/
 EOF
 
 # Build edge/iot-container image.
-sudo podman run --network edge -v "$(pwd)":/work:z -v "${TEMPDIR}":/tmp:z --rm quay.io/rhel-edge/ansible-runner:"${ARCH}" ansible-playbook -v -i /tmp/inventory -e image_type="$CONTAINER_IMAGE_TYPE" -e ostree_ref="$OSTREE_REF" build-image.yaml || RESULTS=0
+sudo podman run --network edge -v "$(pwd)":/work:z -v "${TEMPDIR}":/tmp:z --rm quay.io/rhel-edge/ansible-runner:"${ARCH}" ansible-playbook -v -i /tmp/inventory -e image_type="$CONTAINER_IMAGE_TYPE" -e ostree_ref="$OSTREE_REF" -e source_url="$SOURCE_URL" build-image.yaml || RESULTS=0
 
 # Copy image back from builder VM.
 scp -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY" "${SSH_USER}@${BUILDER_VM_IP}:/home/admin/*-container.tar" "${TEMPDIR}/edge-container.tar"
@@ -777,7 +808,7 @@ ansible_become_pass=${EDGE_USER_PASSWORD}
 EOF
 
 # Test IoT/Edge OS
-sudo podman run --network edge -v "$(pwd)":/work:z -v "${TEMPDIR}":/tmp:z --rm quay.io/rhel-edge/ansible-runner:"${ARCH}" ansible-playbook -v -i /tmp/inventory -e os_name="${ANSIBLE_OS_NAME}" -e ostree_commit="${UPGRADE_HASH}" -e ostree_ref="${REF_PREFIX}:${UPGRADE_OSTREE_REF}" -e sysroot_ro="$SYSROOT_RO" check-ostree.yaml || RESULTS=0
+sudo podman run --network edge -v "$(pwd)":/work:z -v "${TEMPDIR}":/tmp:z --rm quay.io/rhel-edge/ansible-runner:"${ARCH}" ansible-playbook -v -i /tmp/inventory -e os_name="${ANSIBLE_OS_NAME}" -e ostree_commit="${UPGRADE_HASH}" -e ostree_ref="${REF_PREFIX}:${UPGRADE_OSTREE_REF}" -e sysroot_ro="$SYSROOT_RO" -e ostree_upgrade="true" check-ostree.yaml || RESULTS=0
 check_result
 
 # Final success clean up

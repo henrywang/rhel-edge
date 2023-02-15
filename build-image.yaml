@@ -8,6 +8,7 @@
     repo_url: ""
     quay_repo: ""
     parent_ref: ""
+    source_url: ""
 
   tasks:
     - name: install required packages
@@ -103,6 +104,21 @@
         name: osbuild-composer.socket
         state: started
       become: yes
+
+    - block:
+        - name: generate source config file
+          template:
+            src: "files/source.toml.j2"
+            dest: /tmp/source.toml
+
+        - name: add source into osbuild-composer
+          command: composer-cli sources add "/tmp/source.toml"
+          become: yes
+
+        - name: check source
+          command: composer-cli sources list
+          become: yes
+      when: source_url != ""
 
     - name: check fdo-admin-cli
       shell: rpm -qa | grep fdo-admin-cli
