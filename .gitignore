@@ -5,3 +5,6 @@ container.toml
 report.xml
 upgrade-container.toml
 .idea/workspace.xml
+jenkins.keytab
+krb5.conf
+client.conf

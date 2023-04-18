@@ -1,0 +1,30 @@
+FROM quay.io/fedora/fedora:38-x86_64
+
+LABEL name="beaker_runner" \
+      maintainer="xiaofwan@redhat.com" \
+      version="1" \
+      release="1" \
+      description="Beaker client running env"
+
+ADD https://password.corp.redhat.com/legacy.crt \
+    https://password.corp.redhat.com/RH-IT-Root-CA.crt \
+    /etc/pki/ca-trust/source/anchors/
+RUN curl -k https://engineering.redhat.com/Eng-CA.crt -o /etc/pki/ca-trust/source/anchors/Eng-CA.crt && \
+    update-ca-trust extrac
+
+RUN dnf -y update && \
+    dnf -y install \
+        beaker-client \
+        openssh-clients \
+        ansible-core \
+        curl \
+        git \
+        net-tools \
+        python3 && \
+    dnf clean all && \
+    ansible-galaxy collection install community.general
+
+COPY jenkins.keytab krb5.conf /etc/
+COPY client.conf /etc/beaker/
+
+WORKDIR /work
