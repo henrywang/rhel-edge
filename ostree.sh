@@ -565,7 +565,7 @@ for _ in $(seq 0 30); do
 done
 
 # Reboot one more time to make /sysroot as RO by new ostree-libs-2022.6-3.el9.x86_64
-sudo ssh "${SSH_OPTIONS[@]}" -i "${SSH_KEY}" "${SSH_USER}@${GUEST_ADDRESS}" 'nohup sudo systemctl reboot &>/dev/null & exit'
+sudo ssh "${SSH_OPTIONS[@]}" -i "${SSH_KEY}" "${SSH_USER}@${GUEST_ADDRESS}" 'nohup sudo systemctl reboot -q --wait & exit'
 # Sleep 10 seconds here to make sure vm restarted already
 sleep 10
 
@@ -710,7 +710,7 @@ sudo rm -rf "$UPGRADE_PATH"
 # Upgrade image/commit.
 greenprint "Upgrade ostree image/commit"
 sudo ssh "${SSH_OPTIONS[@]}" -i "${SSH_KEY}" "${SSH_USER}@${GUEST_ADDRESS}" 'sudo rpm-ostree upgrade'
-sudo ssh "${SSH_OPTIONS[@]}" -i "${SSH_KEY}" "${SSH_USER}@${GUEST_ADDRESS}" 'nohup sudo systemctl reboot &>/dev/null & exit'
+sudo ssh "${SSH_OPTIONS[@]}" -i "${SSH_KEY}" "${SSH_USER}@${GUEST_ADDRESS}" 'nohup sudo systemctl reboot -q --wait & exit'
 
 # Sleep 10 seconds here to make sure vm restarted already
 sleep 10
